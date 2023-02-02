@@ -51,7 +51,7 @@ void melangerDeck()
 }
 
 void createTable()
-{ // dsitribution des cartes aux joueurs
+{ // distribution des cartes ( et donc des objets associés) aux joueurs
 	// Le joueur 0 possede les cartes d'indice 0,1,2
 	// Le joueur 1 possede les cartes d'indice 3,4,5
 	// Le joueur 2 possede les cartes d'indice 6,7,8
@@ -61,14 +61,14 @@ void createTable()
 
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 8; j++)
-			tableCartes[i][j] = 0; // mise des élements à zéro
+			tableCartes[i][j] = 0; // initialisation à 0 du tableau
 
 	for (i = 0; i < 4; i++) // pour tous les joueurs
 	{
 		for (j = 0; j < 3; j++) // pour toutes les cartes du joueur
 		{
 			c = deck[i * 3 + j];
-			switch (c) // remplissage du tableau des indices (petites icones)
+			switch (c) // remplissage du tableau des objets (petites icones)
 			{
 			case 0: // Sebastian Moran
 				tableCartes[i][7]++;
@@ -202,7 +202,7 @@ void sendMessageToClient(char *clientip, int clientport, char *mess)
 	close(sockfd);
 }
 
-void broadcastMessage(char *mess) // message en entrée, envoie a tous les clients
+void broadcastMessage(char *mess) // message mess en entrée, l'envoie a tous les clients
 {
 	int i;
 
@@ -226,7 +226,6 @@ int main(int argc, char *argv[])
 	int clientPort;
 	int id;
 	char reply[256];
-
 
 	// erreur si pas assez d'arguments
 	if (argc < 2)
@@ -283,15 +282,16 @@ int main(int argc, char *argv[])
 		printf("Received packet from %s:%d\nData: [%s]\n\n",
 			   inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), buffer);
 
-		if (fsmServer == 0)
+		if (fsmServer == 0) // fsmServer==0  : attente des connexions de tous les joueurs
 		{
 			switch (buffer[0])
 			{
+				// Message 'C' : Demande de connection de la part d'un client
 			case 'C':
-				sscanf(buffer, "%c %s %d %s", &com, clientIpAddress, &clientPort, clientName);
+				sscanf(buffer, "%c %s %d %s", &com, clientIpAddress, &clientPort, clientName); // récupération de l'Ip du joueur, de son Port et de son nom
 				printf("COM=%c ipAddress=%s port=%d name=%s\n", com, clientIpAddress, clientPort, clientName);
 
-				// fsmServer==0 alors j'attends les connexions de tous les joueurs
+				// stockage local de l'Ip, port et nom dans liste
 				strcpy(tcpClients[nbClients].ipAddress, clientIpAddress);
 				tcpClients[nbClients].port = clientPort;
 				strcpy(tcpClients[nbClients].name, clientName);
@@ -299,30 +299,24 @@ int main(int argc, char *argv[])
 
 				printClients();
 
-				// rechercher l'id du joueur qui vient de se connecter
-
+				// recherche de l'id du joueur qui vient de se connecter
 				id = findClientByName(clientName);
 				printf("id=%d\n", id);
 
-				// lui envoyer un message personnel pour lui communiquer son id
-
+				// Message 'I' : envoi d'un message personnel pour lui communiquer son id au client
 				sprintf(reply, "I %d", id); //"I" = identifiant
 				sendMessageToClient(tcpClients[id].ipAddress,
 									tcpClients[id].port,
 									reply);
 
-				// Envoyer un message broadcast pour communiquer a tout le monde la liste des joueurs actuellement
+				// Message 'L' : Envoi d'un message broadcast pour communiquer a tout le monde la liste des joueurs actuellement
 				// connectes
-
-				sprintf(reply, "L %s %s %s %s", tcpClients[0].name, tcpClients[1].name, tcpClients[2].name, tcpClients[3].name); //"L" = liste des joueurs connectés, au départ chaqun des champs de cette liste est remplacée par des tirets si personne n'est co sur les places restantes
+				sprintf(reply, "L %s %s %s %s", tcpClients[0].name, tcpClients[1].name, tcpClients[2].name, tcpClients[3].name); // les champs de cette liste sont remplacés par des tirets si personne n'est co sur les places restantes
 				broadcastMessage(reply);
 
 				// Si le nombre de joueurs atteint 4, alors on peut lancer le jeu
-
 				if (nbClients == 4)
 				{
-					// CODE ICI
-
 					// On envoie ses cartes au joueur 0, ainsi que la ligne qui lui correspond dans tableCartes
 
 					sprintf(reply, "D %d %d %d", deck[0], deck[1], deck[2]);
@@ -366,7 +360,7 @@ int main(int argc, char *argv[])
 						sendMessageToClient(tcpClients[3].ipAddress, tcpClients[3].port, reply);
 					}
 
-					// On envoie enfin un message a tout le monde pour definir qui est le joueur courant=0
+					// On envoie enfin un message a tout le monde pour definir qui est le joueur courant = 0
 
 					sprintf(reply, "M %d", joueurCourant);
 					printf("Joueur Courant : %d\n", joueurCourant);
@@ -374,36 +368,39 @@ int main(int argc, char *argv[])
 
 					fsmServer = 1; // tous les joueurs sont connectés
 				}
+
 				break;
 			}
 		}
-		else if (fsmServer == 1)
+		else if (fsmServer == 1) // reception d'un message
 		{
 			switch (buffer[0])
 			{
+			// Message 'G' : accusation d'un personnage par un joueur, le serveur va répodnre vrai(1) ou faux(0)
 			case 'G':
-				sscanf(buffer, "G %d %d", &id, &i); // joueur qui accuse et joueur accusé
-				if (i == deck[12])					// il trouve le coupable
+				sscanf(buffer, "G %d %d", &id, &i); // id = joueur qui accuse, i = personnage accusé
+				if (i == deck[12])					// si accusation bonne
 				{
-					sprintf(reply, "A %d 1", id);
+					sprintf(reply, "A %d 1", id); // réponse avec un 1
 					broadcastMessage(reply);
 				}
 				else
-				{
-					sprintf(reply, "A %d 0", id);
+				{								  // si accusation fausse
+					sprintf(reply, "A %d 0", id); // réponse avec un 0
 					broadcastMessage(reply);
 
-					if (joueurCourant++ == 3) // passage au joueur suivant
+					if (joueurCourant++ == 3) // Passage au joueur suivant
 					{
-						joueurCourant = 0;
+						joueurCourant = 0; // remise à zéro si numéro de joueur = 4
 					}
 				}
 				break;
 
-			case 'O':								//"qui a tel item"
+			// Message 'O' : demande ouverte pour un objet (qui a tel objet)
+			case 'O':
 				sscanf(buffer, "O %d %d", &id, &i); // récupération du joueur qui fait la demande et de la demande
 
-				for (j = 0; j < 4; j++)
+				for (j = 0; j < 4; j++) // parcours de tous les joueurs
 				{
 					if (j == id)
 					{
@@ -411,13 +408,13 @@ int main(int argc, char *argv[])
 					}
 					else
 					{
-						if (tableCartes[j][i] == 0)
+						if (tableCartes[j][i] == 0) // si le joueur n'a pas l'objet
 						{
-							sprintf(reply, "V %d %d 0", j, i);
+							sprintf(reply, "V %d %d 0", j, i); // envoi d'une réponse négative
 						}
-						else
+						else // si le joueur a l'objet
 						{
-							sprintf(reply, "V %d %d 100", j, i);
+							sprintf(reply, "V %d %d 100", j, i); // envoi d'une réponse positive 
 						}
 						broadcastMessage(reply);
 					}
@@ -428,8 +425,9 @@ int main(int argc, char *argv[])
 				}
 				break;
 
-			case 'S':												   //"toi spécifiquement joueur n° machin combien tu as de item (ex crâne) machin"
-				sscanf(buffer, "S %d %d %d", &id, &i, &j);			   // joueur qui fait la demande, joueur selectionné, obj selectionné
+			// Message 'S": demande spécifique (combien joueur n°_ a de __)
+			case 'S':												   
+				sscanf(buffer, "S %d %d %d", &id, &i, &j);			   // id = joueur qui fait la demande, i = joueur selectionné, j = obj selectionné
 				sprintf(reply, "V %d %d %d", i, j, tableCartes[i][j]); // envoi de l'information demandée au joueur
 				broadcastMessage(reply);
 				if (joueurCourant++ == 3)
