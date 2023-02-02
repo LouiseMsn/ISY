@@ -226,11 +226,7 @@ int main(int argc, char *argv[])
 	int clientPort;
 	int id;
 	char reply[256];
-	// int accusedCard;// accuse d'être coupable par current joueur
 
-	// for(int i=0;i<=0;i++){ //initialisation de la liste des éliminés
-	// 	elimines[i]=0;
-	// }
 
 	// erreur si pas assez d'arguments
 	if (argc < 2)

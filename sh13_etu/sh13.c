@@ -1,5 +1,6 @@
 // Compiler avec gcc -Wall sh13.c -o sh13 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf
-// à rendre avec le dossier: diagramme UML de séquence
+// lancer avec ./sh13 localhost 32000 localhost 32001 Marsouin
+
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -38,10 +39,10 @@ char *nbnoms[] = {"Sebastian Moran", "irene Adler", "inspector Lestrade",
 				  "inspector Hopkins", "Sherlock Holmes", "John Watson", "Mycroft Holmes",
 				  "Mrs. Hudson", "Mary Morstan", "James Moriarty"};
 
-volatile int synchro; // variable importante
+volatile int synchro;  // permet de synchroniser les threads 
 
 void *fn_serveur_tcp(void *arg)
-{ // fonction thread serveur réseau
+{ // fonction qui crée le thread serveur réseau
 
 	int sockfd, newsockfd, portno;
 	socklen_t clilen;
@@ -94,7 +95,7 @@ void *fn_serveur_tcp(void *arg)
 }
 
 void sendMessageToServer(char *ipAddress, int portno, char *mess)
-{ 
+{ // envoie un message  mess au serveur d'adresse ipAdress et de port portno
 
 	int sockfd, n;
 	struct sockaddr_in serv_addr;
@@ -140,12 +141,14 @@ int main(int argc, char **argv)
 	int id; // numero du joueur actif
 	int perdant = 0;
 	int gagnant = 0;
-	if (argc < 6)
+
+	if (argc < 6) // explique le format pour exécuter le programme si jamais il n'y a pas le bon nombre d'arguments
 	{
 		printf("<app> <Main server ip address> <Main server port> <Client ip address> <Client port> <player name>\n");
 		exit(1);
 	}
 
+	// récupération des données passées en argument 
 	strcpy(gServerIpAddress, argv[1]); // gServerIpAdress du serveur global
 	gServerPort = atoi(argv[2]);	   // gServerPort port du serveur global
 	strcpy(gClientIpAddress, argv[3]);
@@ -193,9 +196,9 @@ int main(int argc, char **argv)
 	strcpy(gNames[2], "-");
 	strcpy(gNames[3], "-");
 
-	// variables globales : ce que je vais faire en fonction ce qui est cliqué
+	// variables globales : ce que le programme va faire en fonction ce qui est cliqué
 	joueurSel = -1;
-	objetSel = -1; // si objet et joueur alors "est ce que ce joueur a cet item", si juste objet alors question "est ce que qqn a cet item"
+	objetSel = -1; 
 	guiltSel = -1;
 
 	// bitmap pour afficher les cartes correspondant au numéro dans b[]
@@ -203,6 +206,7 @@ int main(int argc, char **argv)
 	b[1] = -1;
 	b[2] = -1;
 
+	// initialisation des tableaux pour la désignation du coupable par les joueurs
 	for (i = 0; i < 13; i++)
 		guiltGuess[i] = 0;
 
@@ -210,6 +214,7 @@ int main(int argc, char **argv)
 		for (j = 0; j < 8; j++)
 			tableCartes[i][j] = -1;
 
+	// initialistion des variables de jeu et de connexion
 	goEnabled = 0;
 	connectEnabled = 1;
 
@@ -223,7 +228,7 @@ int main(int argc, char **argv)
 	texture_gobutton = SDL_CreateTextureFromSurface(renderer, gobutton);
 	texture_connectbutton = SDL_CreateTextureFromSurface(renderer, connectbutton);
 
-	TTF_Font *Sans = TTF_OpenFont("sans.ttf", 15); // ouverture de la police
+	TTF_Font *Sans = TTF_OpenFont("sans.ttf", 15); // Ouverture de la police
 	printf("Sans=%p\n", Sans);
 
 	/* Creation du thread serveur tcp. */
@@ -274,28 +279,29 @@ int main(int argc, char **argv)
 					int ind = (my - 350) / 30;
 					guiltGuess[ind] = 1 - guiltGuess[ind];
 				}
-				else if ((mx >= 500) && (mx < 700) && (my >= 350) && (my < 450) && (goEnabled == 1))
+				else if ((mx >= 500) && (mx < 700) && (my >= 350) && (my < 450) && (goEnabled == 1)) // clic sur le bouton "GO"
 				{
-					printf("go! joueur=%d objet=%d guilt=%d\n", joueurSel, objetSel, guiltSel);
-					if (guiltSel != -1)
+					printf("go! joueur=%d objet=%d guilt=%d\n", joueurSel, objetSel, guiltSel); // affichage des selections du joueur
+
+					if (guiltSel != -1) // envoi au serveur du coupable selectionné par le joueur
 					{
-						sprintf(sendBuffer, "G %d %d", gId, guiltSel); // message guilty, gId = numéro du joueur
+						sprintf(sendBuffer, "G %d %d", gId, guiltSel); // gId = numéro du joueur, guiltSel = personnage désigné coupable
+						sendMessageToServer(gServerIpAddress, gServerPort, sendBuffer); // envoi du buffer au serveur
+					}
+					else if ((objetSel != -1) && (joueurSel == -1)) // si selection d'un joueur mais pas d'un objet alors demande ouverte a tous les joueurs
+					{
+						sprintf(sendBuffer, "O %d %d", gId, objetSel); 
 						sendMessageToServer(gServerIpAddress, gServerPort, sendBuffer);
 					}
-					else if ((objetSel != -1) && (joueurSel == -1))
+					else if ((objetSel != -1) && (joueurSel != -1)) // si selection d'un joueur et d'un objet alors demande spécifique
 					{
-						sprintf(sendBuffer, "O %d %d", gId, objetSel); // message demande ouverte
+						sprintf(sendBuffer, "S %d %d %d", gId, joueurSel, objetSel); 
 						sendMessageToServer(gServerIpAddress, gServerPort, sendBuffer);
-					}
-					else if ((objetSel != -1) && (joueurSel != -1))
-					{
-						sprintf(sendBuffer, "S %d %d %d", gId, joueurSel, objetSel); // message demande fermée à un joueur
-						sendMessageToServer(gServerIpAddress, gServerPort, sendBuffer);
-						// PARTIE MODIFIEE
+						
 					}
 				}
 				else
-				{ // remise à 0 si rien n'a été selectionné
+				{ // remise à 0 lors de la phase d'attente
 					joueurSel = -1;
 					objetSel = -1;
 					guiltSel = -1;
@@ -303,80 +309,77 @@ int main(int argc, char **argv)
 				break;
 			case SDL_MOUSEMOTION:
 				SDL_GetMouseState(&mx, &my);
-				break;
+				break;	
 			}
 		}
 
-		if (synchro == 1) // on est sur qu'un message à été réçu
+		if (synchro == 1) // un message à été réçu
 		{
 			printf("consomme |%s|\n", gbuffer);
-			switch (gbuffer[0])
+			switch (gbuffer[0]) // formatage des communications : première lettre = type d'action
 
 			{
 			// Message 'I' : le joueur recoit son Id
 			case 'I':
 				sscanf(gbuffer, "I %d", &gId);
 				printf("Id personnelle: %d\n", gId);
-				// affecte la valeur gbuffer à gId avec sscanf (
+				// affecte la valeur gbuffer à gId avec sscanf
 				break;
 
-			// Message 'L' : le joueur recoit la liste des joueurs (nom) remplir gName avec le contenu du buffer envoyé
+			// Message 'L' : le joueur recoit la liste des noms des joueurs lors du début de partie
 			case 'L':
-				sscanf(gbuffer, "L %s %s %s %s", gNames[0], gNames[1], gNames[2], gNames[3]);
+				sscanf(gbuffer, "L %s %s %s %s", gNames[0], gNames[1], gNames[2], gNames[3]); // gName rempli avec les noms des joueurs 
 				printf("Les joueurs actuellement connectés sont : %s %s %s %s\n", gNames[0], gNames[1], gNames[2], gNames[3]);
-				// PARTIE MODIFIE
 				break;
 
-			// Message 'D' : deal le joueur recoit ses trois cartes
+			// Message 'D' : deal le joueur recoit ses trois cartes lors du début de partie
 			case 'D':
-				sscanf(gbuffer, "D %d %d %d", &b[0], &b[1], &b[2]);
+				sscanf(gbuffer, "D %d %d %d", &b[0], &b[1], &b[2]); // stockage des cartes dans b[] pour affichage graphique
 				printf("Deck personnel : %d %d %d\n", b[0], b[1], b[2]);
-				// PARTIE MODIFIE
 				break;
 
 			// Message 'M' : le joueur recoit le n° du joueur courant à comparer avec gId
 			// Cela permet d'affecter goEnabled pour autoriser l'affichage du bouton go
 			case 'M':
-				sscanf(gbuffer, "M %d", &id);
-				printf("Tour de : %s\n", gNames[id]);
-				goEnabled = (id == gId); // = 1 si c'est à son tour de jouer
-				// PARTIE MODIFIEE
+				sscanf(gbuffer, "M %d", &id); // reception du joueur courant
+				printf("Tour de : %s\n", gNames[id]); 
+				goEnabled = (id == gId); //  i==gId) = 1 si c'est à son tour de jouer
 				break;
 
-			// Message 'V' : le joueur recoit une valeur de tableCartes
+			// Message 'V' : le joueur recoit une valeur de tableCartes (réponse du serveur à une demande)
 			case 'V':
-				sscanf(gbuffer, "V %d %d %d", &h, &i, &j);				 // reception de h,i,tableCartes[h][i]
+				sscanf(gbuffer, "V %d %d %d", &h, &i, &j);				 // h = numéro du joueur et i = numéro de l'objet, j = nouvelle valeur
 				if (tableCartes[h][i] == -1 || tableCartes[h][i] == 100) // si case non initialisée ou si on a recu info du serveur
 				{
-					tableCartes[h][i] = j;
+					tableCartes[h][i] = j; // mise à jour de la valeur du tableau
 				}
-				// PARTIE MODIFIE
 				break;
 
+			// Message 'A' : réponse du serveur à une accusation (bonne ou fausse)
 			case 'A':
 				sscanf(gbuffer, "A %d %d", &j, &i);
-				if (i == 1) // accusation bonne
+				if (i == 1) // si l'accusation est bonne
 				{
 					printf("%s à trouvé le coupable\n", gNames[j]);
-					goEnabled = 0; // le jeu est fini
+					goEnabled = 0; // le jeu est fini, on enleve le bouton go
 
-					if (j == gId)
+					if (j == gId) // si le joueur à gagné
 					{
 						printf("Et %s c'est VOUS, vous avez avez gagné bravo :)\n", gNames[j]);
-						gagnant = 1;
+						gagnant = 1; // permet de changer la couleur du fond en vert
 					}
 					else
-					{
+					{ // si c'est un autre joueur qui à gagné
 						printf("Vous avez perdu :(\n");
-						perdant = 1;
+						perdant = 1; // permet de changer la couleur du fond en rouge
 					}
 				}
-				else // accusation fausse
+				else // si l'accusation est fausse on affiche que le joueur est nul
 				{
 					printf("%s s'est trompé\n", gNames[j]);
 				}
 			}
-			synchro = 0;
+			synchro = 0; // remise à 0 de la variable de reception de message
 		}
 
 		// FIN DE CE QU'IL Y A A REMPLIR
